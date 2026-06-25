@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0d1f17"/>
+  <circle cx="32" cy="34" r="17" fill="#f4f7f2" stroke="#0d1f17" stroke-width="2"/>
+  <!-- center pentagon -->
+  <polygon points="32,26 39,31 36,39 28,39 25,31" fill="#0d1f17"/>
+  <!-- lime goal bar above -->
+  <rect x="16" y="12" width="32" height="4" rx="2" fill="#c6ff3a"/>
+  <rect x="16" y="12" width="4" height="9" rx="2" fill="#c6ff3a"/>
+  <rect x="44" y="12" width="4" height="9" rx="2" fill="#c6ff3a"/>
+</svg>
