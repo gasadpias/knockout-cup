@@ -134,15 +134,17 @@
 
   /* ---- mobile: make the match fill the screen ---- */
   @media (hover: none) and (pointer: coarse) {
-    body.playing { padding: 8px 6px 8px; justify-content: flex-start; overflow: hidden; touch-action: none; }
+    body.playing { padding: 6px 4px 4px; justify-content: flex-start; overflow: hidden; touch-action: none; }
     body.playing .masthead { display: none; }          /* reclaim header space during a match */
-    body.playing .game-head { margin-top: 4px; margin-bottom: 6px; gap: 14px; }
-    body.playing .stage-pill { margin-bottom: 4px; }
-    body.playing .score-block .score { font-size: 34px; }
-    body.playing .clock { font-size: 24px; }
+    body.playing .game-head { margin-top: 2px; margin-bottom: 4px; gap: 14px; }
+    body.playing .stage-pill { margin-bottom: 2px; }
+    body.playing .score-block .score { font-size: 30px; }
+    body.playing .clock { font-size: 22px; }
+    body.playing .controls-hint { display: none; }
     .canvas-wrap { max-width: 100%; }
-    /* let the pitch grow to use available height while keeping its aspect ratio */
-    body.playing canvas { width: 100%; max-height: 74vh; object-fit: contain; }
+    /* the canvas now has a tall internal resolution, so let it display at its
+       natural shape filling the width; it fills almost the whole screen height */
+    body.playing canvas { width: 100%; height: auto; max-height: none; }
   }
 </style>
 </head>
@@ -233,8 +235,8 @@ const TEAMS = [
   { code:'CIV', name:"Côte d'Ivoire",  flag:'🇨🇮', kit:['#ff7900','#009e60'] },
   { code:'NOR', name:'Norway',         flag:'🇳🇴', kit:['#ba0c2f','#00205b'] },
   { code:'MEX', name:'Mexico',         flag:'🇲🇽', kit:['#006847','#ce1126'] },
-  { code:'SCO', name:'Scotland',       flag:'🏴󠁧󠁢󠁳󠁣󠁴󠁿', kit:['#0065bf','#ffffff'] },
-  { code:'ENG', name:'England',        flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿', kit:['#ffffff','#1d3a8a'] },
+  { code:'SCO', name:'Scotland',       flag:'🏴', kit:['#0065bf','#ffffff'] },
+  { code:'ENG', name:'England',        flag:'🏴', kit:['#ffffff','#1d3a8a'] },
   { code:'CPV', name:'Cape Verde',     flag:'🇨🇻', kit:['#003893','#cf2027'] },
   { code:'ARG', name:'Argentina',      flag:'🇦🇷', kit:['#6cace4','#ffffff'] },
   { code:'URU', name:'Uruguay',        flag:'🇺🇾', kit:['#5b9bd5','#001489'] },
@@ -331,12 +333,44 @@ function contrast(hex){
    ============================================================ */
 const canvas = document.getElementById('pitch');
 const ctx = canvas.getContext('2d');
-const W = canvas.width, H = canvas.height;
-const GOAL_W = 190;                    // width of the goal mouth
+
+// Decide the pitch's internal resolution. On a touch phone we make it fill the
+// available screen as a tall portrait pitch (the game already plays vertically:
+// you attack the top goal, defend the bottom). On desktop we keep the classic
+// 720x460 landscape. Because every coordinate in the game is expressed relative
+// to W and H (e.g. W/2, H-26, H*0.72), changing these values rescales the whole
+// game automatically, physics, drawing, and goals included.
+const isTouch = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+let W, H;
+if (isTouch) {
+  // fill the screen width, and make the pitch tall enough to use most of the
+  // screen, but cap the height:width ratio so shot/keeper dynamics stay close to
+  // the desktop feel (a very tall pitch makes shots die to friction before goal).
+  const availW = Math.min(window.innerWidth - 8, 520);
+  const availH = window.innerHeight - 110;            // leave room for the scoreboard
+  W = Math.round(availW);
+  const maxRatio = 1.5;                               // never taller than 1.5x wide
+  H = Math.round(Math.min(availH, W * maxRatio));
+  H = Math.max(H, Math.round(W * 1.25));              // and at least 1.25x for a portrait feel
+  canvas.width = W;
+  canvas.height = H;
+} else {
+  W = canvas.width;   // 720
+  H = canvas.height;  // 460
+}
+// goal mouth scales with pitch width so it stays a sensible fraction of the goal line
+const GOAL_W = Math.round(W * (isTouch ? 0.42 : 0.236));   // ~170 on desktop
 const GOAL_L = (W-GOAL_W)/2, GOAL_R = (W+GOAL_W)/2;
 const GOAL_DEPTH = 12;                  // how far from the edge the goal line sits
 const BODY_R = 15, BALL_R = 9;
 const MATCH_SECONDS = 60;
+// Speeds are tuned for the desktop pitch height (460). On a taller mobile pitch,
+// scale every pixels-per-frame speed so the game feels the same pace everywhere.
+const SCALE = H / 460;
+// Ball friction per frame. On a taller pitch the ball must travel further, so we
+// reduce friction proportionally to keep a shot's reach a consistent fraction of
+// the pitch (otherwise shots die before reaching the goal on a big mobile pitch).
+const BALL_FRICTION = Math.pow(0.978, 1 / SCALE);
 
 // format seconds as M:SS (e.g. 60 -> "1:00", 45 -> "0:45", 9 -> "0:09")
 function fmtClock(total){
@@ -417,10 +451,10 @@ function difficulty(){
   const stageIndex = [32,16,8,4,2].indexOf(teamsLeft); // 0..4
   return {
     label: ROUND_NAMES[teamsLeft],
-    cpuSpeed: 3.0 + stageIndex*0.35,                   // faster CPU later
+    cpuSpeed: (3.0 + stageIndex*0.35) * SCALE,         // faster CPU later
     cpuReaction: 0.6 + stageIndex*0.09,                // chases more directly
-    keeperSpeed: 1.3 + stageIndex*0.22,                // sharper keepers later, but always beatable
-    shootPower: 9 + stageIndex*0.6,
+    keeperSpeed: (1.3 + stageIndex*0.22) * SCALE,      // sharper keepers later, but always beatable
+    shootPower: (9 + stageIndex*0.6) * SCALE,
   };
 }
 
@@ -496,7 +530,7 @@ function update(){
   const { you, cpu, ball, youGk, cpuGk, diff } = match;
 
   // ---- player movement (keyboard OR touch joystick) ----
-  const accel=0.95, maxV=4.8;
+  const accel=0.95*SCALE, maxV=4.8*SCALE;
   let ax=0, ay=0;
   if(keys['arrowup']||keys['w']) ay-=1;
   if(keys['arrowdown']||keys['s']) ay+=1;
@@ -534,7 +568,7 @@ function update(){
 
   // ---- keeper body-blocks a dribbler: carrying it straight through the keeper loses possession ----
   if(match.carrier==='you' && dist(cpuGk, you) < BODY_R*2.1){
-    match.carrier=null; match.charge=0; match.charging=false;   // drop any charge on loss of possession
+    match.carrier=null;
     match.ball.x=cpuGk.x; match.ball.y=cpuGk.y+BODY_R+BALL_R+2;
     match.ball.vx=(Math.random()-0.5)*4; match.ball.vy=6;   // keeper clears down-field
   } else if(match.carrier==='cpu' && dist(youGk, cpu) < BODY_R*2.1){
@@ -550,7 +584,7 @@ function update(){
     ball.vx=ball.vy=0;
     // GOAL while dribbling it in: if the carried ball crosses the top line inside the mouth, it counts
     if(ball.y < GOAL_DEPTH && ball.x>GOAL_L && ball.x<GOAL_R) return scoreGoal(true);
-    if(dist(cpu,ball)<BODY_R+BALL_R+2 && Math.random()<0.04*diff.cpuReaction){ match.carrier='cpu'; match.charge=0; match.charging=false; } // tackle: drop any charge
+    if(dist(cpu,ball)<BODY_R+BALL_R+2 && Math.random()<0.04*diff.cpuReaction) match.carrier='cpu'; // tackle
   } else if(match.carrier==='cpu'){
     ball.x=cpu.x; ball.y=cpu.y+BODY_R+BALL_R; ball.vx=ball.vy=0;
     // CPU can dribble it into your bottom goal too
@@ -558,15 +592,15 @@ function update(){
     if(dist(you,ball)<BODY_R+BALL_R+2 && (keys[' ']||Math.hypot(you.vx,you.vy)>1)) match.carrier='you'; // win it back
   } else {
     // loose ball physics
-    ball.x+=ball.vx; ball.y+=ball.vy; ball.vx*=0.978; ball.vy*=0.978;
+    // loose ball physics
+    ball.x+=ball.vx; ball.y+=ball.vy; ball.vx*=BALL_FRICTION; ball.vy*=BALL_FRICTION;
     if(Math.abs(ball.vx)<0.02) ball.vx=0; if(Math.abs(ball.vy)<0.02) ball.vy=0;
     if(ball.x<BALL_R){ball.x=BALL_R; ball.vx*=-0.6;} if(ball.x>W-BALL_R){ball.x=W-BALL_R; ball.vx*=-0.6;}
 
     const inMouth = ball.x>GOAL_L && ball.x<GOAL_R;
 
     // ---- GOAL CHECK FIRST, before pickup or keeper saves ----
-    // Checked every frame: max ball speed (~11px) is under the goal-line depth,
-    // so a shot always lands inside this band for at least one frame and can't skip it.
+    // Use the ball's travel this frame so a fast shot can't "skip" the line.
     // Top goal -> YOU score. Anything at/over the top line inside the mouth counts.
     if(ball.y < GOAL_DEPTH){
       if(inMouth) return scoreGoal(true);
@@ -581,10 +615,10 @@ function update(){
     // ---- keeper saves: ONLY when the ball is in front of the line, not already in the mouth past them ----
     const headingToTop = ball.vy < 0;
     const headingToBottom = ball.vy > 0;
-    if(headingToTop && ball.y < 60 && ball.y > GOAL_DEPTH && dist(cpuGk,ball) < BODY_R+BALL_R-6){
+    if(headingToTop && ball.y < 60 && ball.y > GOAL_DEPTH && dist(cpuGk,ball) < BODY_R+BALL_R-2){
       ball.vy = Math.abs(ball.vy)*0.5+2.5; ball.vx *= 0.4;       // parried back down-field
     }
-    if(headingToBottom && ball.y > H-60 && ball.y < H-GOAL_DEPTH && dist(youGk,ball) < BODY_R+BALL_R-6){
+    if(headingToBottom && ball.y > H-60 && ball.y < H-GOAL_DEPTH && dist(youGk,ball) < BODY_R+BALL_R-2){
       ball.vy = -(Math.abs(ball.vy)*0.5+2.5); ball.vx *= 0.4;
     }
 
@@ -609,14 +643,14 @@ function moveKeeper(gk, ball, lineY, spd){
     // so the keeper is consistently a step behind a well-placed shot.
     target = W/2 + (ball.x - W/2) * 0.70;
   } else {
-    // someone's dribbling: hold near the centre of the goal. The keeper does NOT
-    // chase the dribbler across the goal, so if you move out to an angle and shoot
-    // across goal, you have a real opening. This makes scoring intuitive: get to a
-    // position, then shoot toward the far side.
-    target = W/2 + (ball.x - W/2) * 0.15;
+    // someone's dribbling: the keeper shades toward the dribbler (but doesn't fully
+    // mirror them), so simply moving to an angle isn't an automatic goal. You still
+    // have to place the shot to the side the keeper has left open.
+    target = W/2 + (ball.x - W/2) * 0.45;
   }
-  // the keeper can't reach the very corners of the (now wider) goal
-  target = Math.max(GOAL_L + 34, Math.min(GOAL_R - 34, target));
+  // the keeper can't quite reach the very corners of the goal (proportional to goal size)
+  const postGap = GOAL_W * 0.13;
+  target = Math.max(GOAL_L + postGap, Math.min(GOAL_R - postGap, target));
   gk.x += Math.max(-spd, Math.min(spd, target - gk.x));
 }
 function clampField(p){
