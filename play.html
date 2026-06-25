@@ -233,8 +233,8 @@ const TEAMS = [
   { code:'CIV', name:"Côte d'Ivoire",  flag:'🇨🇮', kit:['#ff7900','#009e60'] },
   { code:'NOR', name:'Norway',         flag:'🇳🇴', kit:['#ba0c2f','#00205b'] },
   { code:'MEX', name:'Mexico',         flag:'🇲🇽', kit:['#006847','#ce1126'] },
-  { code:'SCO', name:'Scotland',       flag:'🏴', kit:['#0065bf','#ffffff'] },
-  { code:'ENG', name:'England',        flag:'🏴', kit:['#ffffff','#1d3a8a'] },
+  { code:'SCO', name:'Scotland',       flag:'🏴󠁧󠁢󠁳󠁣󠁴󠁿', kit:['#0065bf','#ffffff'] },
+  { code:'ENG', name:'England',        flag:'🏴󠁧󠁢󠁥󠁮󠁧󠁿', kit:['#ffffff','#1d3a8a'] },
   { code:'CPV', name:'Cape Verde',     flag:'🇨🇻', kit:['#003893','#cf2027'] },
   { code:'ARG', name:'Argentina',      flag:'🇦🇷', kit:['#6cace4','#ffffff'] },
   { code:'URU', name:'Uruguay',        flag:'🇺🇾', kit:['#5b9bd5','#001489'] },
@@ -534,7 +534,7 @@ function update(){
 
   // ---- keeper body-blocks a dribbler: carrying it straight through the keeper loses possession ----
   if(match.carrier==='you' && dist(cpuGk, you) < BODY_R*2.1){
-    match.carrier=null;
+    match.carrier=null; match.charge=0; match.charging=false;   // drop any charge on loss of possession
     match.ball.x=cpuGk.x; match.ball.y=cpuGk.y+BODY_R+BALL_R+2;
     match.ball.vx=(Math.random()-0.5)*4; match.ball.vy=6;   // keeper clears down-field
   } else if(match.carrier==='cpu' && dist(youGk, cpu) < BODY_R*2.1){
@@ -550,14 +550,13 @@ function update(){
     ball.vx=ball.vy=0;
     // GOAL while dribbling it in: if the carried ball crosses the top line inside the mouth, it counts
     if(ball.y < GOAL_DEPTH && ball.x>GOAL_L && ball.x<GOAL_R) return scoreGoal(true);
-    if(dist(cpu,ball)<BODY_R+BALL_R+2 && Math.random()<0.04*diff.cpuReaction) match.carrier='cpu'; // tackle
+    if(dist(cpu,ball)<BODY_R+BALL_R+2 && Math.random()<0.04*diff.cpuReaction){ match.carrier='cpu'; match.charge=0; match.charging=false; } // tackle: drop any charge
   } else if(match.carrier==='cpu'){
     ball.x=cpu.x; ball.y=cpu.y+BODY_R+BALL_R; ball.vx=ball.vy=0;
     // CPU can dribble it into your bottom goal too
     if(ball.y > H-GOAL_DEPTH && ball.x>GOAL_L && ball.x<GOAL_R) return scoreGoal(false);
     if(dist(you,ball)<BODY_R+BALL_R+2 && (keys[' ']||Math.hypot(you.vx,you.vy)>1)) match.carrier='you'; // win it back
   } else {
-    // loose ball physics
     // loose ball physics
     ball.x+=ball.vx; ball.y+=ball.vy; ball.vx*=0.978; ball.vy*=0.978;
     if(Math.abs(ball.vx)<0.02) ball.vx=0; if(Math.abs(ball.vy)<0.02) ball.vy=0;
@@ -566,7 +565,8 @@ function update(){
     const inMouth = ball.x>GOAL_L && ball.x<GOAL_R;
 
     // ---- GOAL CHECK FIRST, before pickup or keeper saves ----
-    // Use the ball's travel this frame so a fast shot can't "skip" the line.
+    // Checked every frame: max ball speed (~11px) is under the goal-line depth,
+    // so a shot always lands inside this band for at least one frame and can't skip it.
     // Top goal -> YOU score. Anything at/over the top line inside the mouth counts.
     if(ball.y < GOAL_DEPTH){
       if(inMouth) return scoreGoal(true);
